@@ -1,0 +1,76 @@
+name: Deploy to production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-test-and-deploy-production:
+    name: Fetch image and deploy to production environment on merge to master branch
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          service_account_email: ${{ secrets.GCP_SA_DIGDIR_FDK_GCR_EMAIL }}
+          service_account_key: ${{ secrets.GCP_SA_DIGDIR_FDK_GCR_KEY }}
+
+      - name: Configure docker to use the gcloud command-line tool as a credential helper
+        run: gcloud auth configure-docker eu.gcr.io
+
+      - name: Apply Helm template
+        run: |
+          helm repo add fdk https://informasjonsforvaltning.github.io/helm-chart/
+          helm fetch --untar --untardir ./helm fdk/publishers-cache
+          helm template -f ./helm/publishers-cache/values/prod.yaml ./helm/publishers-cache/ > ./kubectlapply.yaml
+          chmod o+w ./kubectlapply.yaml
+          cat kubectlapply.yaml
+
+      - name: Create backup snapshot
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          service_account_email: ${{ secrets.DIGDIR_FDK_PROD_EMAIL }}
+          service_account_key: ${{ secrets.DIGDIR_FDK_PROD_AUTODEPLOY }}
+      - run: |
+          gcloud compute --project digdir-fdk-prod disks snapshot "fdk-prod-publishers-cache" --snapshot-names "autogcs-autodeploy-prod-publishers-cache-${GITHUB_SHA::8}" --zone "europe-north1-a" &
+          wait
+          gcloud compute --project digdir-fdk-prod snapshots add-labels "autogcs-autodeploy-prod-publishers-cache-${GITHUB_SHA::8}" --labels="snapshotdays="14""
+
+      - name: Get kubeconfig file from GKE
+        uses: machine-learning-apps/gke-kubeconfig@master
+        with:
+          application_credentials: ${{ secrets.DIGDIR_FDK_PROD_AUTODEPLOY }}
+          project_id: digdir-fdk-prod
+          location_zone: europe-north1-a
+          cluster_name: digdir-fdk-prod
+
+      - name: Deploy to production
+        uses: docker://bitnami/kubectl:latest
+        env:
+          KUBECONFIG: '/github/workspace/.kube/config'
+        with:
+          args: "apply -f ./kubectlapply.yaml --force"
+
+      - name: Notify slack
+        uses: 8398a7/action-slack@v3
+        with:
+          mention: 'channel'
+          if_mention: failure
+          status: ${{ job.status }}
+          author_name: 'Application: publishers-cache | Environment: prod'
+          fields: commit,author,workflow,message
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+
+      - name: Trigger deploy to demo
+        uses: peter-evans/repository-dispatch@master
+        with:
+          token: ${{ secrets.DISPATCH_TOKEN }}
+          event-type: deploy-demo
+          client-payload: '{"sha": "${{ github.sha }}"}'
