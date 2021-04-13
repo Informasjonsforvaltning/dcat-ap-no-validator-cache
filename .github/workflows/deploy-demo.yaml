@@ -15,8 +15,8 @@ jobs:
       - name: Apply Helm template
         run: |
           helm repo add fdk https://informasjonsforvaltning.github.io/helm-chart/
-          helm fetch --untar --untardir ./helm fdk/publishers-cache
-          helm template -f ./helm/publishers-cache/values/demo.yaml ./helm/publishers-cache/ > ./kubectlapply.yaml
+          helm fetch --untar --untardir ./helm fdk/dcat-ap-no-validator-cache
+          helm template -f ./helm/dcat-ap-no-validator-cache/values/demo.yaml ./helm/dcat-ap-no-validator-cache/ > ./kubectlapply.yaml
           chmod o+w ./kubectlapply.yaml
           cat kubectlapply.yaml
 
@@ -41,7 +41,7 @@ jobs:
           mention: 'channel'
           if_mention: failure
           status: ${{ job.status }}
-          author_name: 'Application: publishers-cache | Environment: demo'
+          author_name: 'Application: dcat-ap-no-validator-cache | Environment: demo'
           fields: commit,author,workflow
         env:
           GITHUB_TOKEN: ${{ github.token }}
