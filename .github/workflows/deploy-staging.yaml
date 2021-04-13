@@ -25,8 +25,8 @@ jobs:
       - name: Apply Helm template
         run: |
           helm repo add fdk https://informasjonsforvaltning.github.io/helm-chart/
-          helm fetch --untar --untardir ./helm fdk/publishers-cache
-          helm template -f ./helm/publishers-cache/values/staging.yaml ./helm/publishers-cache/ > ./kubectlapply.yaml
+          helm fetch --untar --untardir ./helm fdk/dcat-ap-no-validator-cache
+          helm template -f ./helm/dcat-ap-no-validator-cache/values/staging.yaml ./helm/dcat-ap-no-validator-cache/ > ./kubectlapply.yaml
           chmod o+w ./kubectlapply.yaml
           cat kubectlapply.yaml
 
@@ -49,7 +49,7 @@ jobs:
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
-          author_name: 'Application: publishers-cache | Environment: staging'
+          author_name: 'Application: dcat-ap-no-validator-cache | Environment: staging'
           fields: commit,author,workflow
         env:
           GITHUB_TOKEN: ${{ github.token }}
