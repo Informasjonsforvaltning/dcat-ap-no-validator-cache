@@ -7,56 +7,18 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
-    name: Fetch image and deploy to staging environment when pull request is created
-    runs-on: ubuntu-latest
+  deploy-staging:
+    name: Call reusable workflow when pull request is created
     if: github.event.pull_request.draft == false
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Setup gcloud CLI
-        uses: google-github-actions/setup-gcloud@master
-        with:
-          service_account_key: ${{ secrets.GCP_SA_DIGDIR_FDK_GCR_KEY }}
-          export_default_credentials: true
-
-      - name: Configure docker to use the gcloud command-line tool as a credential helper
-        run: gcloud auth configure-docker eu.gcr.io
-
-      - name: Apply Helm template
-        run: |
-          helm repo add fdk https://informasjonsforvaltning.github.io/helm-chart/
-          helm fetch --untar --untardir ./helm fdk/dcat-ap-no-validator-cache
-          helm template -f ./helm/dcat-ap-no-validator-cache/values/staging.yaml \
-          ./helm/dcat-ap-no-validator-cache/ > ./kubectlapply.yaml
-          chmod o+w ./kubectlapply.yaml
-          cat kubectlapply.yaml
-
-      - name: Setup gcloud CLI for deploy
-        uses: google-github-actions/setup-gcloud@master
-        with:
-          service_account_key: ${{ secrets.DIGDIR_FDK_DEV_AUTODEPLOY }}
-          export_default_credentials: true
-
-      - name: Deploy to GCP & check status
-        run: |
-          gcloud container clusters get-credentials digdir-fdk-dev --region europe-north1-a --project digdir-fdk-dev
-          kubectl apply -f ./kubectlapply.yaml --force
-          if ! kubectl --namespace=staging rollout status deployment dcat-ap-no-validator-cache; then
-          kubectl --namespace=staging rollout undo deployment dcat-ap-no-validator-cache
-          kubectl --namespace=staging rollout status deployment dcat-ap-no-validator-cache
-          exit 1
-          fi
-
-      - name: Notify slack
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          author_name: 'Application: dcat-ap-no-validator-cache | Environment: staging'
-          fields: commit,author,workflow
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: always()
+    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
+    with:
+      app_name: dcat-ap-no-validator-cache
+      caller_sha: ${{ github.sha }}
+      repo: ${{ github.repository }}
+      actor: ${{ github.actor }}
+      environment: staging
+      cluster: digdir-fdk-dev
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DIGDIR_FDK_AUTODEPLOY: ${{ secrets.DIGDIR_FDK_DEV_AUTODEPLOY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
